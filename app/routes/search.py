@@ -168,8 +168,7 @@ async def run_search(request: Request, db: Session = Depends(get_db)):
         request,
         "results.html",
         {
-            "search_id": result.search.id,
-            "enrich_ids": enrich_ids,
+            "search_id": result.search.id,            "enrich_ids": enrich_ids,
             "role": result.search.role,
             "location": result.search.location,
             "experience": result.search.experience,
@@ -192,5 +191,6 @@ async def run_search(request: Request, db: Session = Depends(get_db)):
             "authenticity": auth_display,
             "interview": {},
             "company": company_display,
+            "tracker_api_url": settings.TRACKER_API_URL or "http://127.0.0.1:8787",
         },
     )

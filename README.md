@@ -242,15 +242,26 @@ Details, taxonomy, and limits: `docs/interviews.md`.
 JobSetu discoveries can be pushed into the Cloudflare **Student Job Tracker**
 (`../cloudflare`) as `SAVED` applications, both directions:
 
-- **Export API** (read-only, no auth): `GET /api/jobs?search_id=N` lists a
-  search's jobs; `GET /api/jobs/{id}/tracker-export` returns a payload shaped
-  for the Tracker's `POST /api/applications`. CORS allows the Tracker
-  frontend (`http://localhost:5173`, `http://127.0.0.1:5173`).
-- **Save to Tracker button:** every results card posts its export to the
-  Tracker API (URL + token asked once, stored in `localStorage`).
-- **Tracker Discover page:** the Tracker frontend can browse any JobSetu
-  search ID and import listings.
-- Tests: `tests/test_tracker_export.py` (4 tests; full suite 197 passed).
+- **Export API** (read-only, no auth): `GET /api/searches` (recent searches
+  for the Discover picker), `GET /api/jobs?search_id=N`, and
+  `GET /api/jobs/{id}/tracker-export` (payload shaped for the Tracker's
+  `POST /api/applications`). CORS allows the Tracker frontend.
+- **Save to Tracker button:** every results card signs you into the Tracker
+  API (email + password asked once; only the token is kept in `localStorage`)
+  and saves the job. The API URL prompt is prefilled from `TRACKER_API_URL`.
+- **Tracker Discover page:** the Tracker frontend lists recent JobSetu
+  searches and imports listings.
+- Tests: `tests/test_tracker_export.py` (5 tests).
+
+### URLs are env-configured (no hardcoded ports)
+
+| Variable | Default (local) | Production |
+|---|---|---|
+| `TRACKER_API_URL` | `http://127.0.0.1:8787` | `https://<worker>.<subdomain>.workers.dev` |
+| `TRACKER_WEB_ORIGINS` | local `:5173` built in | `https://<pages>.pages.dev` (comma-separated) |
+
+Mirror settings on the Tracker side: `VITE_JOBSETU_URL` (frontend build),
+`JOBSETU_ORIGIN` (Worker). See the Tracker README's deployment table.
 
 ## Credit visibility
 

@@ -233,7 +233,7 @@
   function trackerBase() {
     var base = window.localStorage.getItem("sjt_api_url");
     if (!base) {
-      base = window.prompt("Student Job Tracker API URL:", "http://127.0.0.1:8787") || "";
+      base = window.prompt("Student Job Tracker API URL:", {{ tracker_api_url|tojson }}) || "";
       base = base.replace(/\/+$/, "");
       if (base) window.localStorage.setItem("sjt_api_url", base);
     }

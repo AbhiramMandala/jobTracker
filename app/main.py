@@ -48,11 +48,21 @@ def create_app() -> FastAPI:
     app = FastAPI(title="JobSetu", lifespan=_lifespan)
 
     # Tracker integration: the Cloudflare Student Job Tracker frontend
-    # (http://localhost:5173 in local dev) fetches /api/jobs* cross-origin.
+    # fetches /api/jobs* cross-origin. Local Vite origins always allowed;
+    # add deployed Pages URLs via TRACKER_WEB_ORIGINS (comma-separated).
     # Read-only GET endpoints, no credentials — same posture as /debug/usage.
+    extra_origins = [
+        origin.strip()
+        for origin in get_settings().TRACKER_WEB_ORIGINS.split(",")
+        if origin.strip()
+    ]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_origins=[
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            *extra_origins,
+        ],
         allow_methods=["GET"],
         allow_headers=["*"],
     )

@@ -84,3 +84,23 @@ def test_list_searches(client):
     assert entry["role"] == "Python Backend Developer"
     assert entry["location"] == "Hyderabad"
     assert entry["job_count"] == 1
+
+
+def test_results_page_exposes_tracker_config(client, monkeypatch):
+    """Results HTML carries the search ID and the Tracker API default."""
+    from app.services import serpapi_client as client_module
+    from tests._fixtures import EMPTY, PAGE_1
+
+    def fake_google_jobs(self, q, location, gl="in", hl="en", next_page_token=""):
+        return PAGE_1 if not next_page_token else EMPTY
+
+    monkeypatch.setattr(client_module.SerpApiClient, "google_jobs", fake_google_jobs)
+    res = client.post(
+        "/search",
+        data={"role": "Python Backend Developer", "location": "Hyderabad",
+              "experience": "Fresher"},
+    )
+    assert res.status_code == 200
+    assert "Search #" in res.text
+    assert "data-tracker-save" in res.text
+    assert "http://127.0.0.1:8787" in res.text  # TRACKER_API_URL default
