@@ -42,12 +42,24 @@ _FRIENDLY = {
 }
 
 
+# Job-type picker values from the search form (also the results-page filter).
+# Unknown values fall back to "any": filtering is a display aid, so a bad
+# value must never break the search.
+JOB_TYPES = {"any", "fulltime", "contract", "parttime", "internship"}
+
+
+def _clean_job_type(raw: object) -> str:
+    value = str(raw or "").strip().lower()
+    return value if value in JOB_TYPES else "any"
+
+
 @router.post("/search", response_class=HTMLResponse)
 async def run_search(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
     role = str(form.get("role") or "")
     location = str(form.get("location") or "")
     experience = str(form.get("experience") or "Fresher")
+    job_type = _clean_job_type(form.get("job_type"))
     discovery_started = time.monotonic()
     try:
         result = JobSearchService(db).run(role, location, experience)
@@ -59,6 +71,7 @@ async def run_search(request: Request, db: Session = Depends(get_db)):
                 "role": role or "Python Backend Developer",
                 "location": location or "Hyderabad",
                 "experience": experience,
+                "job_type": job_type,
                 "search_available": True,
                 "error": str(exc),
             },
@@ -191,6 +204,7 @@ async def run_search(request: Request, db: Session = Depends(get_db)):
             "authenticity": auth_display,
             "interview": {},
             "company": company_display,
+            "job_type": job_type,
             "tracker_api_url": settings.TRACKER_API_URL or "http://127.0.0.1:8787",
         },
     )

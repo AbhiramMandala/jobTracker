@@ -45,7 +45,28 @@
         <option value="private">Private Company</option>
       </select>
     </div>
+    <div class="field">
+      <label for="filter-exp">Experience level</label>
+      <select id="filter-exp">
+        <option value="">All levels</option>
+        <option value="entry">Fresher / entry-level</option>
+        <option value="experienced">Experienced</option>
+        <option value="unspecified">Not specified</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="filter-jobtype">Job type</label>
+      <select id="filter-jobtype">
+        <option value="any" {% if job_type == "any" or not job_type %}selected{% endif %}>Any type</option>
+        <option value="fulltime" {% if job_type == "fulltime" %}selected{% endif %}>Full-time</option>
+        <option value="contract" {% if job_type == "contract" %}selected{% endif %}>Contract</option>
+        <option value="parttime" {% if job_type == "parttime" %}selected{% endif %}>Part-time</option>
+        <option value="internship" {% if job_type == "internship" %}selected{% endif %}>Internship</option>
+        <option value="unspecified">Not specified</option>
+      </select>
+    </div>
   </div>
+  <p class="muted">Experience and job-type filters read the listing text (title + description). Listings without a clear signal are always shown — except under “Not specified”, which shows only those.</p>
   <p class="muted" id="filter-empty" hidden>No cards match these filters. <a href="#" id="filter-reset">Clear filters</a></p>
   {% endif %}
 </section>
@@ -201,25 +222,63 @@
 (function () {
   var vSel = document.getElementById("filter-verify");
   var cSel = document.getElementById("filter-company");
+  var eSel = document.getElementById("filter-exp");
+  var jSel = document.getElementById("filter-jobtype");
   if (!vSel || !cSel) return;
   var cards = Array.prototype.slice.call(document.querySelectorAll(".job-card"));
   var empty = document.getElementById("filter-empty");
+  // Heuristic keyword signals from the card's own text (title + description).
+  // Listings are noisy, so a card with NO signal always passes — except under
+  // the explicit "Not specified" options, which show only those cards.
+  function cardText(card) {
+    var h = card.querySelector("h2");
+    var d = card.querySelector(".desc");
+    return ((h ? h.textContent : "") + " " + (d ? d.textContent : "")).toLowerCase();
+  }
+  function expSignals(card) {
+    var t = " " + cardText(card) + " ";
+    var entry = /fresher|freshers|entry[\s-]?level|trainee|hiring freshers|for freshers|0[\s–\-]*(to|-|–)?\s*1\s*(yr|year)/.test(t);
+    var exp = /senior|\bsr\b|\blead\b|principal|architect|[3-9]\s*\+?\s*(yrs|years)|experienced|experience of/.test(t);
+    var out = [];
+    if (entry) out.push("entry");
+    if (exp) out.push("experienced");
+    return out;
+  }
+  function typeSignals(card) {
+    var t = " " + cardText(card) + " ";
+    var out = [];
+    if (/part[\s-]?time/.test(t)) out.push("parttime");
+    if (/full[\s-]?time|fulltime|permanent/.test(t)) out.push("fulltime");
+    if (/contract|contractual/.test(t)) out.push("contract");
+    if (/intern(ship)?s?/.test(t)) out.push("internship");
+    return out;
+  }
+  function matchSignal(signals, value, anyValue) {
+    if (!value || value === anyValue) return true;
+    if (value === "unspecified") return signals.length === 0;
+    return signals.length === 0 || signals.indexOf(value) !== -1;
+  }
   function apply() {
     var shown = 0;
     cards.forEach(function (card) {
       var ok = (!vSel.value || card.getAttribute("data-verify") === vSel.value) &&
-               (!cSel.value || card.getAttribute("data-company-type") === cSel.value);
+               (!cSel.value || card.getAttribute("data-company-type") === cSel.value) &&
+               (!eSel || matchSignal(expSignals(card), eSel.value, "")) &&
+               (!jSel || matchSignal(typeSignals(card), jSel.value, "any"));
       card.hidden = !ok;
       if (ok) shown += 1;
     });
     if (empty) empty.hidden = shown !== 0;
   }
-  vSel.addEventListener("change", apply);
-  cSel.addEventListener("change", apply);
+  [vSel, cSel, eSel, jSel].forEach(function (sel) {
+    if (sel) sel.addEventListener("change", apply);
+  });
   var reset = document.getElementById("filter-reset");
   if (reset) reset.addEventListener("click", function (e) {
     e.preventDefault();
-    vSel.value = ""; cSel.value = ""; apply();
+    vSel.value = ""; cSel.value = "";
+    if (eSel) eSel.value = ""; if (jSel) jSel.value = "any";
+    apply();
   });
 })();
 </script>
