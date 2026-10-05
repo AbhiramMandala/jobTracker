@@ -237,6 +237,21 @@ Details, taxonomy, and limits: `docs/interviews.md`.
   facts (type estimate + confidence, official site), role skills, interview
   prep topics with report counts, selection process, news, and sources.
 
+## Tracker integration
+
+JobSetu discoveries can be pushed into the Cloudflare **Student Job Tracker**
+(`../cloudflare`) as `SAVED` applications, both directions:
+
+- **Export API** (read-only, no auth): `GET /api/jobs?search_id=N` lists a
+  search's jobs; `GET /api/jobs/{id}/tracker-export` returns a payload shaped
+  for the Tracker's `POST /api/applications`. CORS allows the Tracker
+  frontend (`http://localhost:5173`, `http://127.0.0.1:5173`).
+- **Save to Tracker button:** every results card posts its export to the
+  Tracker API (URL + token asked once, stored in `localStorage`).
+- **Tracker Discover page:** the Tracker frontend can browse any JobSetu
+  search ID and import listings.
+- Tests: `tests/test_tracker_export.py` (4 tests; full suite 197 passed).
+
 ## Credit visibility
 
 `/debug/usage` (dev-only, no auth) shows real per-engine call counts,

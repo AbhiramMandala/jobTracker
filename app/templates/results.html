@@ -152,6 +152,8 @@
     {% for extra in extra_links.get(job.id, []) %}
       <a class="btn btn-ghost" href="{{ extra.url }}" target="_blank" rel="noopener">Also via {{ extra.source }}</a>
     {% endfor %}
+    <button class="btn btn-ghost" type="button" data-tracker-save="{{ job.id }}">Save to Tracker</button>
+    <span class="muted" data-tracker-status="{{ job.id }}" role="status"></span>
   </p>
 </article>
 {% endfor %}
@@ -217,6 +219,56 @@
   if (reset) reset.addEventListener("click", function (e) {
     e.preventDefault();
     vSel.value = ""; cSel.value = ""; apply();
+  });
+})();
+</script>
+<script>
+/* Tracker integration: push a JobSetu discovery into the Cloudflare
+   Student Job Tracker as a SAVED application. The Tracker API base URL
+   and token are stored locally on first use — JobSetu never sees them
+   server-side. */
+(function () {
+  function trackerBase() {
+    var base = window.localStorage.getItem("sjt_api_url");
+    if (!base) {
+      base = window.prompt("Student Job Tracker API URL:", "http://127.0.0.1:8787") || "";
+      base = base.replace(/\/+$/, "");
+      if (base) window.localStorage.setItem("sjt_api_url", base);
+    }
+    return base;
+  }
+  document.querySelectorAll("[data-tracker-save]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var jobId = btn.getAttribute("data-tracker-save");
+      var status = document.querySelector('[data-tracker-status="' + jobId + '"]');
+      var say = function (msg) { if (status) status.textContent = msg; };
+      var base = trackerBase();
+      if (!base) { say("Tracker URL needed."); return; }
+      var token = window.localStorage.getItem("sjt_token") ||
+        window.prompt("Paste your Tracker login token (one-time, stored in this browser):") || "";
+      if (!token) { say("Token needed."); return; }
+      window.localStorage.setItem("sjt_token", token);
+      btn.disabled = true;
+      say("Exporting…");
+      fetch("/api/jobs/" + encodeURIComponent(jobId) + "/tracker-export")
+        .then(function (r) { if (!r.ok) throw new Error("export " + r.status); return r.json(); })
+        .then(function (payload) {
+          return fetch(base + "/api/applications", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+            body: JSON.stringify(payload),
+          }).then(function (r) {
+            if (r.status === 401) {
+              window.localStorage.removeItem("sjt_token");
+              throw new Error("Tracker rejected the token — cleared, try again.");
+            }
+            if (!r.ok) throw new Error("tracker " + r.status);
+            return r.json();
+          });
+        })
+        .then(function () { say("Saved to Tracker ✓"); })
+        .catch(function (err) { say("Save failed: " + err.message); btn.disabled = false; });
+    });
   });
 })();
 </script>
