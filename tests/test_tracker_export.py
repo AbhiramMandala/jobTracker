@@ -72,3 +72,15 @@ def test_tracker_export_shape(client):
 def test_tracker_export_unknown_job(client):
     res = client.get("/api/jobs/999999/tracker-export")
     assert res.status_code == 404
+
+
+def test_list_searches(client):
+    search_id, _ = _seed(client)
+    res = client.get("/api/searches")
+    assert res.status_code == 200
+    body = res.json()
+    assert len(body["searches"]) >= 1
+    entry = next(s for s in body["searches"] if s["id"] == search_id)
+    assert entry["role"] == "Python Backend Developer"
+    assert entry["location"] == "Hyderabad"
+    assert entry["job_count"] == 1

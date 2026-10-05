@@ -17,6 +17,7 @@
     {% else %}
       <span class="badge cached">CACHED · retrieved {{ age }}</span>
     {% endif %}
+    <span class="muted">Search #{{ search_id }} — use this ID in the Tracker Discover page.</span>
   </p>
   {% if stale %}
   <p class="stale-banner" role="alert">Live search unavailable. Showing cached results from {{ age }}.</p>
@@ -224,9 +225,10 @@
 </script>
 <script>
 /* Tracker integration: push a JobSetu discovery into the Cloudflare
-   Student Job Tracker as a SAVED application. The Tracker API base URL
-   and token are stored locally on first use — JobSetu never sees them
-   server-side. */
+   Student Job Tracker as a SAVED application. On first use it asks for
+   your Tracker email + password, logs in directly against the Tracker API
+   to get a token, and stores only the token in this browser's localStorage
+   (JobSetu's server never sees either). */
 (function () {
   function trackerBase() {
     var base = window.localStorage.getItem("sjt_api_url");
@@ -237,6 +239,26 @@
     }
     return base;
   }
+  function trackerToken(base) {
+    var token = window.localStorage.getItem("sjt_token");
+    if (token) return Promise.resolve(token);
+    var email = window.prompt("Your Tracker email (used once to sign you in):");
+    if (!email) return Promise.reject(new Error("Tracker login needed."));
+    var password = window.prompt("Your Tracker password (sent only to the Tracker API, never stored):");
+    if (!password) return Promise.reject(new Error("Tracker login needed."));
+    return fetch(base + "/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim(), password: password }),
+    }).then(function (r) {
+      if (!r.ok) throw new Error("Tracker login failed — check email/password.");
+      return r.json();
+    }).then(function (data) {
+      token = data.data.token;
+      window.localStorage.setItem("sjt_token", token);
+      return token;
+    });
+  }
   document.querySelectorAll("[data-tracker-save]").forEach(function (btn) {
     btn.addEventListener("click", function () {
       var jobId = btn.getAttribute("data-tracker-save");
@@ -244,28 +266,27 @@
       var say = function (msg) { if (status) status.textContent = msg; };
       var base = trackerBase();
       if (!base) { say("Tracker URL needed."); return; }
-      var token = window.localStorage.getItem("sjt_token") ||
-        window.prompt("Paste your Tracker login token (one-time, stored in this browser):") || "";
-      if (!token) { say("Token needed."); return; }
-      window.localStorage.setItem("sjt_token", token);
       btn.disabled = true;
-      say("Exporting…");
-      fetch("/api/jobs/" + encodeURIComponent(jobId) + "/tracker-export")
-        .then(function (r) { if (!r.ok) throw new Error("export " + r.status); return r.json(); })
-        .then(function (payload) {
-          return fetch(base + "/api/applications", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
-            body: JSON.stringify(payload),
-          }).then(function (r) {
-            if (r.status === 401) {
-              window.localStorage.removeItem("sjt_token");
-              throw new Error("Tracker rejected the token — cleared, try again.");
-            }
-            if (!r.ok) throw new Error("tracker " + r.status);
-            return r.json();
+      say("Signing in…");
+      trackerToken(base).then(function (token) {
+        say("Exporting…");
+        return fetch("/api/jobs/" + encodeURIComponent(jobId) + "/tracker-export")
+          .then(function (r) { if (!r.ok) throw new Error("export " + r.status); return r.json(); })
+          .then(function (payload) {
+            return fetch(base + "/api/applications", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+              body: JSON.stringify(payload),
+            }).then(function (r) {
+              if (r.status === 401) {
+                window.localStorage.removeItem("sjt_token");
+                throw new Error("session expired — click again to re-sign in.");
+              }
+              if (!r.ok) throw new Error("tracker " + r.status);
+              return r.json();
+            });
           });
-        })
+      })
         .then(function () { say("Saved to Tracker ✓"); })
         .catch(function (err) { say("Save failed: " + err.message); btn.disabled = false; });
     });

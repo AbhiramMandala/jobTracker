@@ -24,7 +24,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
-from app.models import Company, Job, Match
+from app.models import Company, Job, Match, Search
 from app.routes.profile import get_active_candidate
 from app.utils import safe_url
 
@@ -49,10 +49,40 @@ def _job_card(db: Session, job: Job, totals: dict[int, int]) -> dict:
     }
 
 
+@router.get("/api/searches")
+def list_searches(limit: int = 20, db: Session = Depends(get_db)):
+    """Recent searches for the Tracker's Discover picker (newest first)."""
+    limit = max(1, min(int(limit or 20), 50))
+    searches = db.query(Search).order_by(Search.id.desc()).limit(limit).all()
+    ids = [s.id for s in searches]
+    counts: dict[int, int] = {}
+    if ids:
+        from sqlalchemy import func
+
+        for sid, count in (
+            db.query(Job.search_id, func.count(Job.id))
+            .filter(Job.search_id.in_(ids), Job.is_active == True)  # noqa: E712
+            .group_by(Job.search_id)
+            .all()
+        ):
+            counts[sid] = count
+    return {
+        "searches": [
+            {
+                "id": s.id,
+                "role": s.role,
+                "location": s.location,
+                "experience": s.experience,
+                "job_count": counts.get(s.id, 0),
+                "retrieved_at": s.retrieved_at.isoformat() if s.retrieved_at else None,
+            }
+            for s in searches
+        ]
+    }
+
+
 @router.get("/api/jobs")
 def list_jobs(search_id: int, db: Session = Depends(get_db)):
-    from app.models import Search
-
     search = db.query(Search).filter_by(id=search_id).one_or_none()
     if search is None:
         return JSONResponse(status_code=404, content={"detail": "Search not found."})
