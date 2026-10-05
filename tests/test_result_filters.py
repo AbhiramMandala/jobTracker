@@ -1,6 +1,17 @@
 """Experience-level + job-type filters on the search form and results page."""
 
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
 from app.routes.search import JOB_TYPES, _clean_job_type
+
+HARNESS = Path(__file__).with_name("filter_harness.js")
+TEMPLATE = Path(__file__).parent.parent / "app" / "templates" / "results.html"
+needs_node = pytest.mark.skipif(shutil.which("node") is None, reason="node required")
 
 
 def _search(client, monkeypatch, **form):
@@ -49,3 +60,25 @@ def test_new_experience_values_accepted(client, monkeypatch):
     for experience in ("Fresher", "Entry-level (0–1 years)", "Experienced (2+ years)"):
         res = _search(client, monkeypatch, experience=experience)
         assert res.status_code == 200, experience
+
+
+@needs_node
+def test_filter_counts_match_visible_cards(client, monkeypatch, tmp_path):
+    """Run the shipped filter JS against real rendered HTML: every option's
+    count label must equal the cards actually visible when only it is set,
+    and the neutral state must show everything."""
+    html = _search(client, monkeypatch, job_type="contract").text
+    page = tmp_path / "results.html"
+    page.write_text(html, encoding="utf-8")
+    proc = subprocess.run(
+        ["node", str(HARNESS), str(TEMPLATE), str(page)],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    report = json.loads(proc.stdout)
+    assert report["neutral"] == report["total"] > 0
+    for select_id, options in report["options"].items():
+        assert options, f"{select_id} has no options"
+        for value, label_count in options:
+            assert label_count is not None, f"{select_id} option missing count"
+            assert report["single"][f"{select_id}:{value}"] == label_count, select_id

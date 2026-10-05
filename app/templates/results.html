@@ -238,7 +238,7 @@
   function expSignals(card) {
     var t = " " + cardText(card) + " ";
     var entry = /fresher|freshers|entry[\s-]?level|trainee|hiring freshers|for freshers|0[\s–\-]*(to|-|–)?\s*1\s*(yr|year)/.test(t);
-    var exp = /senior|\bsr\b|\blead\b|principal|architect|[3-9]\s*\+?\s*(yrs|years)|experienced|experience of/.test(t);
+    var exp = /senior|\bsr\b|\blead\b|principal|architect(?!ure)|[3-9]\s*\+?\s*(yrs|years)|experienced|experience of/.test(t);
     var out = [];
     if (entry) out.push("entry");
     if (exp) out.push("experienced");
@@ -257,6 +257,34 @@
     if (!value || value === anyValue) return true;
     if (value === "unspecified") return signals.length === 0;
     return signals.length === 0 || signals.indexOf(value) !== -1;
+  }
+  // Live counts on every option ("Established employer (0)") so filtering
+  // is never blind: an empty result always explains itself in the picker.
+  function passCount(predicate) {
+    var n = 0;
+    cards.forEach(function (card) { if (predicate(card)) n += 1; });
+    return n;
+  }
+  function updateCounts() {
+    function setCounts(sel, counter) {
+      if (!sel) return;
+      Array.prototype.forEach.call(sel.options, function (opt) {
+        if (!opt.getAttribute("data-label")) opt.setAttribute("data-label", opt.textContent);
+        opt.textContent = opt.getAttribute("data-label") + " (" + counter(opt.value) + ")";
+      });
+    }
+    setCounts(vSel, function (val) {
+      return passCount(function (card) { return !val || card.getAttribute("data-verify") === val; });
+    });
+    setCounts(cSel, function (val) {
+      return passCount(function (card) { return !val || card.getAttribute("data-company-type") === val; });
+    });
+    setCounts(eSel, function (val) {
+      return passCount(function (card) { return matchSignal(expSignals(card), val, ""); });
+    });
+    setCounts(jSel, function (val) {
+      return passCount(function (card) { return matchSignal(typeSignals(card), val, "any"); });
+    });
   }
   function apply() {
     var shown = 0;
@@ -280,6 +308,16 @@
     if (eSel) eSel.value = ""; if (jSel) jSel.value = "any";
     apply();
   });
+  // Counts also cover progressive enrichment: VERIFY badges arrive after
+  // page load and rewrite data-verify, so recount when it changes.
+  var mount = document.getElementById("results");
+  if (mount && window.MutationObserver) {
+    new MutationObserver(function () { updateCounts(); }).observe(mount, {
+      attributes: true, subtree: true, attributeFilter: ["data-verify"],
+    });
+  }
+  updateCounts();
+  apply(); // honor preselected values (e.g. job type from the search form)
 })();
 </script>
 <script>
