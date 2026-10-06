@@ -74,6 +74,46 @@ def test_tracker_export_unknown_job(client):
     assert res.status_code == 404
 
 
+def test_job_signals_reuses_matcher_semantics():
+    from app.services.matcher import job_signals
+
+    assert job_signals("senior python developer", "")["experience"] == "experienced"
+    assert job_signals("python developer", "hiring freshers, 0-1 years")["experience"] == "entry"
+    assert job_signals("python developer", "5+ years experience")["experience"] == "experienced"
+    assert job_signals("python developer", "great role")["experience"] == ""
+    assert job_signals("python developer", "microservices architecture role")["experience"] == ""
+    assert job_signals("python developer", "full-time contract role")["job_type"] == "contract"
+
+
+def test_api_search_returns_embedded_shape(client, monkeypatch):
+    from app.services import serpapi_client as client_module
+    from tests._fixtures import EMPTY, PAGE_1
+
+    def fake_google_jobs(self, q, location, gl="in", hl="en", next_page_token=""):
+        return PAGE_1 if not next_page_token else EMPTY
+
+    monkeypatch.setattr(client_module.SerpApiClient, "google_jobs", fake_google_jobs)
+    res = client.post(
+        "/api/search",
+        json={"role": "Python Developer", "location": "Hyderabad", "experience": "Fresher"},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["role"] == "Python Developer"
+    assert isinstance(body["search_id"], int)
+    assert len(body["jobs"]) > 0
+    card = body["jobs"][0]
+    for key in ("id", "company", "title", "location", "apply_link", "signals", "evidence_url", "match_total"):
+        assert key in card, key
+    assert set(card["signals"]) == {"experience", "min_years", "job_type"}
+
+
+def test_api_search_validates_input(client):
+    res = client.post("/api/search", json={"role": "", "location": "Hyderabad"})
+    assert res.status_code == 400
+    assert "detail" in res.json()
+
+
 def test_list_searches(client):
     search_id, _ = _seed(client)
     res = client.get("/api/searches")

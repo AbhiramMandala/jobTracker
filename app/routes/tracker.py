@@ -26,6 +26,9 @@ from sqlalchemy.orm import Session, selectinload
 from app.database import get_db
 from app.models import Company, Job, Match, Search
 from app.routes.profile import get_active_candidate
+from app.services.job_search import JobSearchService
+from app.services.matcher import job_signals
+from app.services.serpapi_client import SerpApiError
 from app.utils import safe_url
 
 logger = logging.getLogger(__name__)
@@ -33,10 +36,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _job_card(db: Session, job: Job, totals: dict[int, int]) -> dict:
+def _job_card(db: Session, job: Job, totals: dict[int, int], match_map: dict[int, Match] | None = None) -> dict:
     company = job.company.name_raw if job.company else ""
     desc = job.description or ""
-    return {
+    card = {
         "id": job.id,
         "company": company,
         "title": job.title_raw or "",
@@ -46,6 +49,67 @@ def _job_card(db: Session, job: Job, totals: dict[int, int]) -> dict:
         "posted": job.posted_text or "",
         "description_snippet": desc[:300],
         "match_total": totals.get(job.id),
+        "signals": job_signals(job.title_norm or "", desc),
+        "evidence_url": f"/jobs/{job.id}/evidence",
+    }
+    if match_map is not None and job.id in match_map:
+        m = match_map[job.id]
+        card["match"] = {
+            "total": m.total,
+            "matched_skills": list(m.matched_skills or []),
+            "missing_skills": list(m.missing_skills or [])[:8],
+            "reasons": list(m.reasons or [])[:6],
+        }
+    return card
+
+
+def _matches_for(db: Session, jobs: list[Job]) -> tuple[dict[int, int], dict[int, Match]]:
+    candidate = get_active_candidate(db)
+    if candidate is None or not jobs:
+        return {}, {}
+    ids = [job.id for job in jobs]
+    rows = (
+        db.query(Match)
+        .filter(Match.job_id.in_(ids), Match.candidate_id == candidate.id)
+        .all()
+    )
+    return {r.job_id: r.total for r in rows}, {r.job_id: r for r in rows}
+
+
+@router.post("/api/search")
+def run_search_api(payload: dict, db: Session = Depends(get_db)):
+    """Embedded-discovery search for the Tracker frontend.
+
+    Thin wrapper over JobSearchService (same validation, discovery, dedup,
+    matching as POST /search). Fast path only: no VERIFY/news enrichment —
+    cards link to each job's evidence page for that. Returns JSON.
+    """
+    role = str((payload or {}).get("role") or "")
+    location = str((payload or {}).get("location") or "")
+    experience = str((payload or {}).get("experience") or "Fresher")
+    try:
+        result = JobSearchService(db).run(role, location, experience)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+    except SerpApiError:
+        logger.warning("tracker search failed q=%r", role)
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Job search is temporarily unavailable. Please try again."},
+        )
+    totals, match_map = _matches_for(db, result.jobs)
+    logger.info("tracker api search role=%r jobs=%d live=%s", role, len(result.jobs), result.is_live)
+    return {
+        "search_id": result.search.id,
+        "role": result.search.role,
+        "location": result.search.location,
+        "experience": result.search.experience,
+        "is_live": result.is_live,
+        "stale": result.stale,
+        "raw_count": result.raw_count,
+        "dup_removed": result.dup_removed,
+        "has_profile": result.has_profile,
+        "jobs": [_job_card(db, job, totals, match_map) for job in result.jobs],
     }
 
 
@@ -93,18 +157,9 @@ def list_jobs(search_id: int, db: Session = Depends(get_db)):
         .order_by(Job.id)
         .all()
     )
-    candidate = get_active_candidate(db)
-    totals: dict[int, int] = {}
-    if candidate is not None and jobs:
-        ids = [job.id for job in jobs]
-        totals = {
-            row.job_id: row.total
-            for row in db.query(Match)
-            .filter(Match.job_id.in_(ids), Match.candidate_id == candidate.id)
-            .all()
-        }
+    totals, match_map = _matches_for(db, jobs)
     logger.info("tracker list search_id=%d jobs=%d", search_id, len(jobs))
-    return {"search_id": search_id, "jobs": [_job_card(db, job, totals) for job in jobs]}
+    return {"search_id": search_id, "jobs": [_job_card(db, job, totals, match_map) for job in jobs]}
 
 
 @router.get("/api/jobs/{job_id}/tracker-export")

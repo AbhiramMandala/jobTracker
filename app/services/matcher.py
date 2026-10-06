@@ -123,6 +123,21 @@ def infer_job_type(title: str, description: str) -> str:
     return ""
 
 
+def job_signals(title_norm: str, description: str) -> dict:
+    """Display signals for tracker cards, reusing the matcher's own keyword
+    sets so classification never drifts from scoring. Experience mirrors
+    score_experience: entry markers win unless the listing is senior-only
+    (senior title or 3+ year minimum with no fresher markers)."""
+    blob = f"{title_norm or ''} {(description or '')[:2000]}".lower()
+    raw_title_tokens = set(re.findall(r"[a-z0-9+#]+", (title_norm or "").lower()))
+    min_years = _job_min_years(blob)
+    fresher = any(m in blob for m in _FRESHER_MARKERS)
+    senior_only = (bool(raw_title_tokens & _SENIOR_TITLES)
+                   or (min_years is not None and min_years >= 3)) and not fresher
+    experience = "experienced" if senior_only else "entry" if fresher else ""
+    return {"experience": experience, "min_years": min_years, "job_type": infer_job_type(title_norm, description)}
+
+
 def _is_remote(job_loc_norm: str, title: str, description: str) -> bool:
     if "remot" in (job_loc_norm or ""):
         return True
