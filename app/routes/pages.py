@@ -19,6 +19,7 @@ def index(request: Request):
             "role": "Python Backend Developer",
             "location": "Hyderabad",
             "experience": "Fresher",
+            "job_type": "any",
             "search_available": True,
         },
     )

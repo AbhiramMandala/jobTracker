@@ -6,6 +6,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -13,7 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
 from app.database import init_db
-from app.routes import authenticity, debug, enrich, evidence, health, pages, profile, search
+from app.routes import authenticity, debug, enrich, evidence, health, pages, profile, search, tracker
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,12 +47,33 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="JobSetu", lifespan=_lifespan)
 
+    # Tracker integration: the Cloudflare Student Job Tracker frontend
+    # fetches /api/jobs* cross-origin. Local Vite origins always allowed;
+    # add deployed Pages URLs via TRACKER_WEB_ORIGINS (comma-separated).
+    # Read-only GET endpoints, no credentials — same posture as /debug/usage.
+    extra_origins = [
+        origin.strip()
+        for origin in get_settings().TRACKER_WEB_ORIGINS.split(",")
+        if origin.strip()
+    ]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            *extra_origins,
+        ],
+        allow_methods=["GET"],
+        allow_headers=["*"],
+    )
+
     app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
     app.include_router(health.router)
     app.include_router(authenticity.router)
     app.include_router(enrich.router)
     app.include_router(pages.router)
     app.include_router(search.router)
+    app.include_router(tracker.router)
     app.include_router(evidence.router)
     app.include_router(debug.router)
     app.include_router(profile.router)

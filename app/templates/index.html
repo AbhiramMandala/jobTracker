@@ -26,11 +26,21 @@
         </select>
       </div>
       <div class="field">
-        <label for="experience">Experience</label>
+        <label for="experience">Experience level</label>
         <select id="experience" name="experience">
           <option {% if experience == "Fresher" %}selected{% endif %}>Fresher</option>
-          <option {% if experience == "0–1 years" %}selected{% endif %}>0–1 years</option>
-          <option {% if experience == "1–2 years" %}selected{% endif %}>1–2 years</option>
+          <option {% if experience == "Entry-level (0–1 years)" %}selected{% endif %}>Entry-level (0–1 years)</option>
+          <option {% if experience == "Experienced (2+ years)" %}selected{% endif %}>Experienced (2+ years)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="job_type">Job type</label>
+        <select id="job_type" name="job_type">
+          <option value="any" {% if job_type == "any" %}selected{% endif %}>Any type</option>
+          <option value="fulltime" {% if job_type == "fulltime" %}selected{% endif %}>Full-time</option>
+          <option value="contract" {% if job_type == "contract" %}selected{% endif %}>Contract</option>
+          <option value="parttime" {% if job_type == "parttime" %}selected{% endif %}>Part-time</option>
+          <option value="internship" {% if job_type == "internship" %}selected{% endif %}>Internship</option>
         </select>
       </div>
     </div>
@@ -40,9 +50,9 @@
     <p class="muted">Recent on this device:</p>
     <div class="recent-row" id="recent-row"></div>
   </div>
-  <details class="filters-toggle">
+    <details class="filters-toggle">
     <summary>More filters</summary>
-    <p class="filters-note">Verification-status and company-type filters appear on the results page and work instantly on your results — no extra searches needed.</p>
+    <p class="filters-note">Experience-level and job-type filters appear on the results page alongside verification-status and company-type filters — all work instantly on your results, no extra searches needed.</p>
   </details>
   <p class="note">Live results via SerpApi Google Jobs. Repeated searches reuse cached results for 24 hours.</p>
 </section>
@@ -174,6 +184,8 @@
   var form = document.getElementById("search-form");
   var role = document.getElementById("role");
   var location = document.getElementById("location");
+  var experience = document.getElementById("experience");
+  var jobType = document.getElementById("job_type");
   var wrap = document.getElementById("recent-searches");
   var row = document.getElementById("recent-row");
   function load() {
@@ -193,20 +205,34 @@
       chip.setAttribute("aria-label", "Search again for " + item.role + " in " + item.location);
       chip.addEventListener("click", function () {
         role.value = item.role;
-        for (var i = 0; i < location.options.length; i += 1) {
-          if (location.options[i].text === item.location) location.selectedIndex = i;
-        }
+        selectByText(location, item.location);
+        selectByText(experience, item.experience);
+        selectByValue(jobType, item.job_type);
         form.submit();
       });
       row.appendChild(chip);
     });
+  }
+  function selectByText(sel, text) {
+    if (!sel || !text) return;
+    for (var i = 0; i < sel.options.length; i += 1) {
+      if (sel.options[i].text === text) { sel.selectedIndex = i; return; }
+    }
+  }
+  function selectByValue(sel, value) {
+    if (!sel || !value) return;
+    for (var i = 0; i < sel.options.length; i += 1) {
+      if (sel.options[i].value === value) { sel.selectedIndex = i; return; }
+    }
   }
   form.addEventListener("submit", function () {
     try {
       var items = load().filter(function (item) {
         return item.role !== role.value || item.location !== location.value;
       });
-      items.unshift({role: role.value, location: location.value});
+      items.unshift({role: role.value, location: location.value,
+                     experience: experience ? experience.value : "",
+                     job_type: jobType ? jobType.value : ""});
       localStorage.setItem(KEY, JSON.stringify(items.slice(0, MAX)));
     } catch (e) { /* private mode */ }
   });
