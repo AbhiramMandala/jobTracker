@@ -1,4 +1,4 @@
-# JobSetu
+# JobTracker
 
 Evidence-powered job intelligence for Indian freshers.
 
